@@ -154,7 +154,7 @@ const Sidebar = ({ activeView, setView, xp, multipliers, balance }: { activeView
 const App = () => {
   const [activeView, setActiveView] = useState<View>('schedule');
   const [tasks, setTasks] = useState<Task[]>(() => {
-    const saved = localStorage.getItem('chronos_v15_tasks');
+    const saved = localStorage.getItem('chronos_v16_tasks');
     if (saved) return JSON.parse(saved);
     const ex = getDailyExercises();
     return [
@@ -175,6 +175,8 @@ const App = () => {
       ]},
       { id: 't4', title: 'B Side (Deepwork)', priority: Priority.HIGH, status: 'todo', createdAt: Date.now(), scheduledBlock: { startHour: 11, startMinute: 30, durationHours: 2 }, xpStakes: 75 },
       { id: 't5', title: 'Free Time', priority: Priority.LOW, status: 'todo', createdAt: Date.now(), scheduledBlock: { startHour: 13, startMinute: 30, durationHours: 4.5 } },
+      { id: 't6', title: 'Education', priority: Priority.MEDIUM, status: 'todo', createdAt: Date.now(), scheduledBlock: { startHour: 18, startMinute: 30, durationHours: 1 }, xpStakes: 50 },
+      { id: 't7', title: 'Yoga and Mobility', priority: Priority.LOW, status: 'todo', createdAt: Date.now(), scheduledBlock: { startHour: 20, startMinute: 0, durationHours: 0.5 }, xpStakes: 50 },
       { id: 't8', title: 'Night Routine', priority: Priority.MEDIUM, status: 'todo', createdAt: Date.now(), scheduledBlock: { startHour: 22, startMinute: 0, durationHours: 0.5 }, subTasks: [
         {id:'nr1', title:'Review Day', completed:false, xpValue:20},
         {id:'nr2', title:'Plan Tomorrow', completed:false, xpValue:20},
@@ -183,11 +185,11 @@ const App = () => {
     ];
   });
   const [planning, setPlanning] = useState<PlanningTask[]>(() => {
-    const saved = localStorage.getItem('chronos_v15_plan');
+    const saved = localStorage.getItem('chronos_v16_plan');
     return saved ? JSON.parse(saved) : [];
   });
   const [rewards, setRewards] = useState<Reward[]>(() => {
-    const saved = localStorage.getItem('chronos_v15_rewards');
+    const saved = localStorage.getItem('chronos_v16_rewards');
     return saved ? JSON.parse(saved) : [
       { id: 'r1', title: 'Gourmet Coffee', cost: 100, icon: 'fa-coffee', count: 0 },
       { id: 'r2', title: '1 Hour Gaming', cost: 250, icon: 'fa-gamepad', count: 0 },
@@ -195,9 +197,9 @@ const App = () => {
     ];
   });
   const [spentXP, setSpentXP] = useState<number>(() => {
-    return parseInt(localStorage.getItem('chronos_v15_spent') || '0');
+    return parseInt(localStorage.getItem('chronos_v16_spent') || '0');
   });
-  const [logs, setLogs] = useState<TimeLog[]>(() => JSON.parse(localStorage.getItem('chronos_v15_logs') || '[]'));
+  const [logs, setLogs] = useState<TimeLog[]>(() => JSON.parse(localStorage.getItem('chronos_v16_logs') || '[]'));
 
   // Timer State
   const [timerTaskId, setTimerTaskId] = useState<string>('');
@@ -211,11 +213,11 @@ const App = () => {
   const [isAddingReward, setIsAddingReward] = useState(false);
 
   useEffect(() => {
-    localStorage.setItem('chronos_v15_tasks', JSON.stringify(tasks));
-    localStorage.setItem('chronos_v15_plan', JSON.stringify(planning));
-    localStorage.setItem('chronos_v15_logs', JSON.stringify(logs));
-    localStorage.setItem('chronos_v15_rewards', JSON.stringify(rewards));
-    localStorage.setItem('chronos_v15_spent', spentXP.toString());
+    localStorage.setItem('chronos_v16_tasks', JSON.stringify(tasks));
+    localStorage.setItem('chronos_v16_plan', JSON.stringify(planning));
+    localStorage.setItem('chronos_v16_logs', JSON.stringify(logs));
+    localStorage.setItem('chronos_v16_rewards', JSON.stringify(rewards));
+    localStorage.setItem('chronos_v16_spent', spentXP.toString());
   }, [tasks, planning, logs, rewards, spentXP]);
 
   // --- REWARD SYSTEM ENGINE ---
@@ -223,15 +225,22 @@ const App = () => {
     let rawXP = 0;
     tasks.forEach(t => {
       let taskBase = 0;
+      
+      // Stakes Logic
       if (t.xpStakes) {
         if (t.status === 'done') taskBase = t.xpStakes;
         else if (t.status === 'todo') taskBase = -t.xpStakes;
-      } else if (t.subTasks) {
+      } 
+      // Sub-task System
+      else if (t.subTasks) {
         const completedCount = t.subTasks.filter(st => st.completed).length;
+        const allDone = completedCount === t.subTasks.length;
+        const noneDone = completedCount === 0;
+
         if (t.title === 'Night Routine') {
-          taskBase = completedCount * 20 + (completedCount === t.subTasks.length ? 40 : 0) - (completedCount === 0 ? 50 : 0);
+          taskBase = completedCount * 20 + (allDone ? 40 : 0) - (noneDone ? 50 : 0);
         } else if (t.title === 'Morning Routine' || t.title === 'Training') {
-          taskBase = completedCount * 10 + (completedCount === t.subTasks.length ? 25 : 0) - (completedCount === 0 ? 25 : 0);
+          taskBase = completedCount * 10 + (allDone ? 25 : 0) - (noneDone ? 25 : 0);
         } else {
           taskBase = completedCount * 10;
         }
@@ -239,6 +248,8 @@ const App = () => {
         if (t.status === 'done') taskBase += 50;
         if (t.status === 'partial') taskBase += 20;
       }
+
+      // Priority Multiplier
       if (taskBase > 0 && t.status === 'done') {
         if (t.priority === Priority.HIGH) taskBase *= 1.2;
         else if (t.priority === Priority.LOW) taskBase *= 0.8;
@@ -331,7 +342,7 @@ const App = () => {
     try {
       const resp = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: `Analyze protocol: ${JSON.stringify(tasks.map(t=>t.title))}. XP: ${totalXP}. Spent: ${spentXP}.`,
+        contents: `Analyze protocol: ${JSON.stringify(tasks.map(t=>t.title))}. XP: ${totalXP}. Balance: ${currentBalance}.`,
         config: { responseMimeType: 'application/json', responseSchema: { type: Type.OBJECT, properties: { score: { type: Type.NUMBER }, summary: { type: Type.STRING }, recommendations: { type: Type.ARRAY, items: { type: Type.STRING } } }, required: ['score', 'summary', 'recommendations'] } }
       });
       setAiResult(JSON.parse(resp.text || '{}'));
@@ -346,16 +357,19 @@ const App = () => {
         <header className="mb-12 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
           <div>
             <h1 className="text-4xl font-black text-slate-900 tracking-tight capitalize">{activeView} Protocol</h1>
-            <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em] mt-2">Chronos Efficiency Engine v15.0</p>
+            <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em] mt-2">Chronos Efficiency Engine v16.0</p>
           </div>
           <div className="flex items-center space-x-4">
              <div className="bg-white px-8 py-3 rounded-2xl shadow-xl flex items-center space-x-4 border border-slate-100">
                <i className="fas fa-wallet text-indigo-500 text-xl"></i>
                <span className="font-black text-lg tracking-wider tabular-nums">{currentBalance} XP</span>
              </div>
-             <div className="bg-slate-900 text-white px-8 py-3 rounded-2xl shadow-2xl flex items-center space-x-4 border border-white/5">
+             <div className="bg-slate-900 text-white px-8 py-3 rounded-2xl shadow-2xl flex items-center space-x-4 border border-white/5 relative">
                <i className="fas fa-bolt text-amber-400 text-xl"></i>
                <span className="font-black text-lg tracking-wider tabular-nums">{totalXP} XP</span>
+               {activeMultipliers.adherence > 1 && (
+                  <span className="absolute -top-3 -right-3 bg-emerald-500 text-white text-[8px] font-black px-2 py-1 rounded-full shadow-lg border-2 border-slate-900">BUFF</span>
+               )}
              </div>
           </div>
         </header>
@@ -379,6 +393,7 @@ const App = () => {
                         <div className="flex items-center space-x-3 mt-2">
                            {task.xpStakes && <span className="bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">+/- {task.xpStakes} XP Stake</span>}
                            {task.priority === Priority.HIGH && <span className="text-[10px] text-rose-500 font-black uppercase tracking-widest"><i className="fas fa-fire mr-1 text-xs"></i> 1.2x Multiplier</span>}
+                           {task.priority === Priority.LOW && <span className="text-[10px] text-emerald-500 font-black uppercase tracking-widest">Efficiency Block</span>}
                         </div>
                       </div>
                     </div>
@@ -404,7 +419,7 @@ const App = () => {
             <div className="bg-white p-10 rounded-[3rem] border border-slate-100 shadow-sm">
               <h2 className="text-xl font-black mb-10 uppercase tracking-[0.3em] text-slate-400">Strategic Objectives</h2>
               <div className="flex flex-col md:flex-row gap-4">
-                <input id="planInput" className="flex-1 bg-slate-50 rounded-2xl px-8 py-5 font-bold outline-none border-2 border-transparent focus:border-indigo-500 transition-all" placeholder="Enter goal..." />
+                <input id="planInput" className="flex-1 bg-slate-50 rounded-2xl px-8 py-5 font-bold outline-none border-2 border-transparent focus:border-indigo-500 transition-all" placeholder="Enter objective..." />
                 <button onClick={() => {
                   const input = document.getElementById('planInput') as HTMLInputElement;
                   if (input.value) setPlanning([{ id: crypto.randomUUID(), title: input.value, category: 'weekly', completed: false, subTasks: [] }, ...planning]);
@@ -480,6 +495,7 @@ const App = () => {
                   <button onClick={stopTimer} className="w-28 h-28 rounded-full bg-rose-600 text-white flex items-center justify-center text-4xl shadow-2xl shadow-rose-600/40 active:scale-90 transition-all"><i className="fas fa-stop"></i></button>
                 )}
               </div>
+              <div className="mt-8 text-indigo-400 font-black text-[10px] uppercase tracking-[0.3em]">+5 XP for every 30m of focus</div>
             </div>
           </div>
         )}
@@ -487,20 +503,20 @@ const App = () => {
         {activeView === 'dashboard' && (
           <div className="space-y-10 animate-fade">
              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                <div className="bg-white p-10 rounded-[3rem] border border-slate-100 shadow-sm relative overflow-hidden group">
-                   <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-4">Total Focus Time</span>
+                <div className="bg-white p-10 rounded-[3rem] border border-slate-100 shadow-sm relative group overflow-hidden">
+                   <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-4">Total Flow Time</span>
                    <div className="text-5xl font-black text-slate-900 tabular-nums tracking-tighter">
                      {Math.floor(logs.reduce((a,b)=>a+b.duration,0)/3600)}<span className="text-2xl text-slate-300 ml-1 uppercase">h</span> {Math.floor((logs.reduce((a,b)=>a+b.duration,0)%3600)/60)}<span className="text-2xl text-slate-300 ml-1 uppercase">m</span>
                    </div>
                 </div>
-                <div className="bg-white p-10 rounded-[3rem] border border-slate-100 shadow-sm relative overflow-hidden group">
+                <div className="bg-white p-10 rounded-[3rem] border border-slate-100 shadow-sm relative group overflow-hidden">
                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-4">Protocol Adherence</span>
                    <div className="text-5xl font-black text-indigo-600 tracking-tighter">
                      {tasks.length > 0 ? Math.round((tasks.filter(t=>t.status==='done').length/tasks.length)*100) : 0}%
                    </div>
                 </div>
-                <div className="bg-white p-10 rounded-[3rem] border border-slate-100 shadow-sm relative overflow-hidden group">
-                   <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-4">XP Velocity</span>
+                <div className="bg-white p-10 rounded-[3rem] border border-slate-100 shadow-sm relative group overflow-hidden">
+                   <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-4">Daily Velocity</span>
                    <div className="text-5xl font-black text-emerald-500 tabular-nums tracking-tighter">+{totalXP % 500}</div>
                 </div>
              </div>
@@ -517,6 +533,47 @@ const App = () => {
                       </Bar>
                    </BarChart>
                 </ResponsiveContainer>
+             </div>
+          </div>
+        )}
+
+        {activeView === 'insights' && (
+          <div className="animate-fade">
+             <div className="bg-indigo-900 text-white p-16 rounded-[4rem] shadow-2xl relative overflow-hidden mb-10">
+               <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/20 rounded-full -mr-48 -mt-48 blur-[100px]"></div>
+               <div className="flex flex-col lg:flex-row items-center justify-between gap-16">
+                 <div className="text-center lg:text-left flex-1">
+                   <div className="w-20 h-20 bg-white/10 rounded-3xl flex items-center justify-center mb-10 mx-auto lg:mx-0 border border-white/10">
+                     <i className="fas fa-brain text-4xl text-indigo-400"></i>
+                   </div>
+                   <h2 className="text-5xl font-black mb-6 tracking-tight">AI Orchestrator</h2>
+                   <p className="opacity-70 text-lg max-w-md leading-relaxed mb-10">Protocol analysis factors in velocity, adherence, and priority multipliers.</p>
+                   <button 
+                     onClick={syncAI} 
+                     disabled={aiLoading}
+                     className="bg-white text-indigo-900 px-12 py-5 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-indigo-50 transition-all shadow-2xl disabled:opacity-50"
+                   >
+                     {aiLoading ? <i className="fas fa-sync fa-spin mr-3"></i> : 'Sync Neural Core'}
+                   </button>
+                 </div>
+                 {aiResult && (
+                    <div className="bg-white/10 backdrop-blur-xl p-10 rounded-[3rem] border border-white/10 flex-1 w-full max-w-xl shadow-2xl">
+                       <div className="flex justify-between items-center mb-10 border-b border-white/10 pb-8">
+                         <span className="text-[12px] font-black uppercase tracking-[0.4em] text-indigo-300">Score</span>
+                         <span className="text-5xl font-black tracking-tighter">{aiResult.score}<span className="text-xl opacity-30">/100</span></span>
+                       </div>
+                       <p className="text-indigo-100 text-lg italic mb-10 leading-relaxed">"{aiResult.summary}"</p>
+                       <ul className="space-y-4">
+                         {aiResult.recommendations.map((r: string, i: number) => (
+                           <li key={i} className="text-xs font-bold flex items-start space-x-4 bg-white/5 p-4 rounded-2xl border border-white/5">
+                             <i className="fas fa-bolt text-indigo-400 mt-1"></i>
+                             <span className="leading-normal">{r}</span>
+                           </li>
+                         ))}
+                       </ul>
+                    </div>
+                 )}
+               </div>
              </div>
           </div>
         )}
