@@ -74,7 +74,7 @@ const formatHour = (h: number, m: number) => {
 
 // --- Sub-Components ---
 
-const Sidebar = ({ activeView, setView, xp }: { activeView: View, setView: (v: View) => void, xp: number }) => {
+const Sidebar = ({ activeView, setView, xp, multipliers }: { activeView: View, setView: (v: View) => void, xp: number, multipliers: { focus: number, adherence: number } }) => {
   const level = Math.floor(xp / 500) + 1;
   const progress = Math.max(0, Math.min(100, ((xp % 500) / 500) * 100));
   const nav = [
@@ -103,17 +103,31 @@ const Sidebar = ({ activeView, setView, xp }: { activeView: View, setView: (v: V
           </nav>
         </div>
         <div className="mt-auto p-8">
-          <div className="bg-slate-800/50 p-6 rounded-[2rem] border border-slate-700/50">
+          <div className="bg-slate-800/50 p-6 rounded-[2rem] border border-slate-700/50 group relative">
             <div className="flex justify-between items-center mb-3">
               <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Rank: {level}</span>
               <span className="text-indigo-400 font-black text-xs">{xp} XP</span>
             </div>
             <div className="w-full bg-slate-900 h-2 rounded-full overflow-hidden">
-              <div className="h-full bg-indigo-500 transition-all duration-1000" style={{ width: `${progress}%` }}></div>
+              <div className="h-full bg-indigo-500 transition-all duration-1000 shadow-[0_0_10px_rgba(79,70,229,0.5)]" style={{ width: `${progress}%` }}></div>
+            </div>
+            {/* Multiplier Tooltip */}
+            <div className="absolute bottom-full left-0 w-full mb-4 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+              <div className="bg-slate-800 border border-slate-700 p-4 rounded-2xl shadow-2xl text-[10px] space-y-2">
+                <div className="flex justify-between font-black uppercase tracking-widest text-slate-400">
+                  <span>Adherence Buff</span>
+                  <span className={multipliers.adherence > 1 ? 'text-emerald-400' : ''}>x{multipliers.adherence.toFixed(1)}</span>
+                </div>
+                <div className="flex justify-between font-black uppercase tracking-widest text-slate-400">
+                  <span>Focus Bonus</span>
+                  <span className={multipliers.focus > 0 ? 'text-indigo-400' : ''}>+{multipliers.focus} XP</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </aside>
+      {/* Mobile Nav */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 px-4 pb-6 pt-2">
         <div className="glass-morphism rounded-[2rem] flex items-center justify-around p-2 shadow-2xl">
           {nav.map(item => (
@@ -133,7 +147,7 @@ const Sidebar = ({ activeView, setView, xp }: { activeView: View, setView: (v: V
 const App = () => {
   const [activeView, setActiveView] = useState<View>('schedule');
   const [tasks, setTasks] = useState<Task[]>(() => {
-    const saved = localStorage.getItem('chronos_v13_tasks');
+    const saved = localStorage.getItem('chronos_v14_tasks');
     if (saved) return JSON.parse(saved);
     const ex = getDailyExercises();
     return [
@@ -164,13 +178,13 @@ const App = () => {
     ];
   });
   const [planning, setPlanning] = useState<PlanningTask[]>(() => {
-    const saved = localStorage.getItem('chronos_v13_plan');
+    const saved = localStorage.getItem('chronos_v14_plan');
     return saved ? JSON.parse(saved) : [
       { id: 'p1', title: 'Launch Q1 MVP', category: 'monthly', completed: false, subTasks: [] },
       { id: 'p2', title: 'AI Module Integration', category: 'weekly', completed: false, subTasks: [] }
     ];
   });
-  const [logs, setLogs] = useState<TimeLog[]>(() => JSON.parse(localStorage.getItem('chronos_v13_logs') || '[]'));
+  const [logs, setLogs] = useState<TimeLog[]>(() => JSON.parse(localStorage.getItem('chronos_v14_logs') || '[]'));
 
   // Timer State
   const [timerTaskId, setTimerTaskId] = useState<string>('');
@@ -183,47 +197,71 @@ const App = () => {
   const [linkingTaskId, setLinkingTaskId] = useState<string | null>(null);
 
   useEffect(() => {
-    localStorage.setItem('chronos_v13_tasks', JSON.stringify(tasks));
-    localStorage.setItem('chronos_v13_plan', JSON.stringify(planning));
-    localStorage.setItem('chronos_v13_logs', JSON.stringify(logs));
+    localStorage.setItem('chronos_v14_tasks', JSON.stringify(tasks));
+    localStorage.setItem('chronos_v14_plan', JSON.stringify(planning));
+    localStorage.setItem('chronos_v14_logs', JSON.stringify(logs));
   }, [tasks, planning, logs]);
 
-  const totalXP = useMemo(() => {
-    return tasks.reduce((acc, t) => {
-      let taskXP = 0;
+  // --- REWARD SYSTEM ENGINE ---
+  const { totalXP, activeMultipliers } = useMemo(() => {
+    let rawXP = 0;
+    
+    // 1. Calculate Base Task XP with Priority Multipliers
+    tasks.forEach(t => {
+      let taskBase = 0;
       
-      // Stakes Logic (1 Thing, B Side, Education, Yoga)
+      // Stakes Logic
       if (t.xpStakes) {
-        if (t.status === 'done') taskXP = t.xpStakes;
-        else if (t.status === 'todo') taskXP = -t.xpStakes;
-        return acc + taskXP;
-      }
-
-      // Sub-task System (Morning, Training, Night)
-      if (t.subTasks) {
+        if (t.status === 'done') taskBase = t.xpStakes;
+        else if (t.status === 'todo') taskBase = -t.xpStakes;
+      } 
+      // Sub-task System
+      else if (t.subTasks) {
         const completedCount = t.subTasks.filter(st => st.completed).length;
         const allDone = completedCount === t.subTasks.length;
         const noneDone = completedCount === 0;
 
         if (t.title === 'Night Routine') {
-          taskXP = completedCount * 20;
-          if (allDone) taskXP += 40; // Total 100 bonus
-          if (noneDone) taskXP -= 50;
+          taskBase = completedCount * 20;
+          if (allDone) taskBase += 40;
+          if (noneDone) taskBase -= 50;
         } else if (t.title === 'Morning Routine' || t.title === 'Training') {
-          taskXP = completedCount * 10;
-          if (allDone) taskXP += 25; // 5*10 + 25 = 75
-          if (noneDone) taskXP -= 25;
+          taskBase = completedCount * 10;
+          if (allDone) taskBase += 25;
+          if (noneDone) taskBase -= 25;
         } else {
-          taskXP = completedCount * 10;
+          taskBase = completedCount * 10;
         }
       } else {
-        // Basic blocks
-        if (t.status === 'done') taskXP += 50;
-        if (t.status === 'partial') taskXP += 20;
+        if (t.status === 'done') taskBase += 50;
+        if (t.status === 'partial') taskBase += 20;
       }
-      return acc + taskXP;
-    }, 0);
-  }, [tasks]);
+
+      // Apply Priority Multiplier (only for positive gains)
+      if (taskBase > 0 && t.status === 'done') {
+        if (t.priority === Priority.HIGH) taskBase *= 1.2;
+        else if (t.priority === Priority.LOW) taskBase *= 0.8;
+      }
+
+      rawXP += taskBase;
+    });
+
+    // 2. Focus Momentum Buff (+5 XP for every 30 mins logged)
+    const totalFocusSeconds = logs.reduce((acc, l) => acc + l.duration, 0);
+    const focusBonus = Math.floor(totalFocusSeconds / 1800) * 5;
+    
+    // 3. Adherence Multiplier (If > 80% completion, x1.1 bonus)
+    const completedTasks = tasks.filter(t => t.status === 'done').length;
+    const adherenceRate = tasks.length > 0 ? completedTasks / tasks.length : 0;
+    const adherenceMultiplier = adherenceRate >= 0.8 ? 1.1 : 1.0;
+
+    const finalXP = Math.round((rawXP + focusBonus) * adherenceMultiplier);
+
+    return { 
+      totalXP: Math.max(0, finalXP), 
+      activeMultipliers: { focus: focusBonus, adherence: adherenceMultiplier } 
+    };
+  }, [tasks, logs]);
 
   // --- ACTIONS ---
 
@@ -310,7 +348,7 @@ const App = () => {
   const syncAI = async () => {
     setAiLoading(true);
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const prompt = `Tasks: ${JSON.stringify(tasks.map(t=>({t:t.title,s:t.status,p:t.priority})))}. Logs: ${JSON.stringify(logs.slice(0,15))}. Return a professional productivity analysis in JSON.`;
+    const prompt = `Tasks: ${JSON.stringify(tasks.map(t=>({t:t.title,s:t.status,p:t.priority})))}. Velocity: ${totalXP}. Return a professional productivity analysis in JSON.`;
     try {
       const resp = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
@@ -335,16 +373,19 @@ const App = () => {
 
   return (
     <div className="flex flex-col md:flex-row min-h-screen bg-slate-50">
-      <Sidebar activeView={activeView} setView={setActiveView} xp={totalXP} />
+      <Sidebar activeView={activeView} setView={setActiveView} xp={totalXP} multipliers={activeMultipliers} />
       <main className="flex-1 p-4 md:p-10 overflow-y-auto max-h-screen custom-scrollbar pb-32 md:pb-10">
         <header className="mb-12 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
           <div>
             <h1 className="text-4xl font-black text-slate-900 tracking-tight capitalize">{activeView} Protocol</h1>
-            <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em] mt-2">Chronos Efficiency Engine v13.0</p>
+            <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em] mt-2">Chronos Efficiency Engine v14.0</p>
           </div>
-          <div className="bg-slate-900 text-white px-8 py-3 rounded-2xl shadow-2xl flex items-center space-x-4 border border-white/5">
-            <i className="fas fa-bolt text-amber-400 text-xl"></i>
+          <div className="bg-slate-900 text-white px-8 py-3 rounded-2xl shadow-2xl flex items-center space-x-4 border border-white/5 relative group">
+            <i className="fas fa-bolt text-amber-400 text-xl animate-pulse"></i>
             <span className="font-black text-lg tracking-wider tabular-nums">{totalXP} XP</span>
+            {activeMultipliers.adherence > 1 && (
+              <span className="absolute -top-3 -right-3 bg-emerald-500 text-white text-[8px] font-black px-2 py-1 rounded-full shadow-lg border-2 border-slate-900">BUFF ACTIVE</span>
+            )}
           </div>
         </header>
 
@@ -367,7 +408,7 @@ const App = () => {
                         <div className="flex items-center space-x-3 mt-2">
                            {task.xpStakes && <span className="bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">+/- {task.xpStakes} XP Stake</span>}
                            {task.linkedPlanningTaskId && <span className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest"><i className="fas fa-link mr-1"></i> Mounted</span>}
-                           {task.priority === Priority.HIGH && <span className="text-[10px] text-rose-500 font-black uppercase tracking-widest"><i className="fas fa-fire mr-1"></i> Urgent</span>}
+                           {task.priority === Priority.HIGH && <span className="text-[10px] text-rose-500 font-black uppercase tracking-widest"><i className="fas fa-fire mr-1 text-xs"></i> 1.2x Multiplier</span>}
                         </div>
                       </div>
                     </div>
@@ -453,6 +494,10 @@ const App = () => {
                   </button>
                 )}
               </div>
+              {/* Focus Bonus Tracker */}
+              <div className="mt-8 text-indigo-400 font-black text-[10px] uppercase tracking-[0.3em]">
+                +5 XP for every 30m of focus
+              </div>
             </div>
           </div>
         )}
@@ -460,19 +505,28 @@ const App = () => {
         {activeView === 'dashboard' && (
           <div className="space-y-10 animate-fade">
              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                <div className="bg-white p-10 rounded-[3rem] border border-slate-100 shadow-sm">
+                <div className="bg-white p-10 rounded-[3rem] border border-slate-100 shadow-sm relative overflow-hidden group">
+                   <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-40 transition-opacity">
+                      <i className="fas fa-clock text-4xl"></i>
+                   </div>
                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-4">Total Focus Time</span>
                    <div className="text-5xl font-black text-slate-900 tabular-nums tracking-tighter">
                      {Math.floor(logs.reduce((a,b)=>a+b.duration,0)/3600)}<span className="text-2xl text-slate-300 ml-1 uppercase">h</span> {Math.floor((logs.reduce((a,b)=>a+b.duration,0)%3600)/60)}<span className="text-2xl text-slate-300 ml-1 uppercase">m</span>
                    </div>
                 </div>
-                <div className="bg-white p-10 rounded-[3rem] border border-slate-100 shadow-sm">
+                <div className="bg-white p-10 rounded-[3rem] border border-slate-100 shadow-sm relative overflow-hidden group">
+                   <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-40 transition-opacity">
+                      <i className="fas fa-bullseye text-4xl"></i>
+                   </div>
                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-4">Protocol Adherence</span>
                    <div className="text-5xl font-black text-indigo-600 tracking-tighter">
                      {tasks.length > 0 ? Math.round((tasks.filter(t=>t.status==='done').length/tasks.length)*100) : 0}%
                    </div>
                 </div>
-                <div className="bg-white p-10 rounded-[3rem] border border-slate-100 shadow-sm">
+                <div className="bg-white p-10 rounded-[3rem] border border-slate-100 shadow-sm relative overflow-hidden group">
+                   <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-40 transition-opacity">
+                      <i className="fas fa-fire text-4xl text-emerald-400"></i>
+                   </div>
                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-4">Daily Velocity</span>
                    <div className="text-5xl font-black text-emerald-500 tabular-nums tracking-tighter">+{totalXP % 500}</div>
                 </div>
@@ -507,7 +561,7 @@ const App = () => {
                      <i className="fas fa-brain text-4xl text-indigo-400"></i>
                    </div>
                    <h2 className="text-5xl font-black mb-6 tracking-tight">AI Orchestrator</h2>
-                   <p className="opacity-70 text-lg max-w-md leading-relaxed mb-10">Systematic analysis of your behavior, focus blocks, and protocol violations.</p>
+                   <p className="opacity-70 text-lg max-w-md leading-relaxed mb-10">Behavioral analysis across your protocol history. XP Velocity is factored into performance scores.</p>
                    <button 
                      onClick={syncAI} 
                      disabled={aiLoading}
