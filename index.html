@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#1e1b4b">
+    <title>ChronosFlow AI - Unified Productivity</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+    <style>
+        :root { --brand: #4f46e5; }
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background-color: #f8fafc;
+            -webkit-tap-highlight-color: transparent;
+            overscroll-behavior-y: contain;
+        }
+        .mono { font-family: 'JetBrains Mono', monospace; }
+        .glass {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .dark-glass {
+            background: rgba(15, 23, 42, 0.9);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .xp-bar { transition: width 1s cubic-bezier(0.34, 1.56, 0.64, 1); }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fade { animation: fadeIn 0.4s ease-out forwards; }
+    </style>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^19.2.3",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "recharts": "https://esm.sh/recharts@^3.6.0",
+    "@google/genai": "https://esm.sh/@google/genai@^1.34.0",
+    "vite": "https://esm.sh/vite@^7.3.0",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2"
+  }
+}
+</script>
+</head>
+<body class="bg-slate-50 text-slate-900">
+    <div id="root"></div>
+
+    <script type="module">
+        import React, { useState, useEffect, useMemo, useRef } from 'https://esm.sh/react@19.0.0';
+        import ReactDOM from 'https://esm.sh/react-dom@19.0.0/client';
+        import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'https://esm.sh/recharts';
+        import { GoogleGenAI, Type } from 'https://esm.sh/@google/genai';
+
+        // --- Types & Constants ---
+        const Priority = { LOW: 'LOW', MEDIUM: 'MEDIUM', HIGH: 'HIGH' };
+
+        // --- Components ---
+
+        const Sidebar = ({ activeView, setView, xp }) => {
+            const level = Math.floor(xp / 500) + 1;
+            const progressToNext = ((xp % 500) / 500) * 100;
+            const menuItems = [
+                { id: 'schedule', icon: 'fa-calendar-day', label: 'Blocks' },
+                { id: 'planning', icon: 'fa-bullseye', label: 'Goals' },
+                { id: 'tracker', icon: 'fa-stopwatch', label: 'Focus' },
+                { id: 'dashboard', icon: 'fa-chart-simple', label: 'Stats' },
+                { id: 'insights', icon: 'fa-microchip', label: 'AI' },
+            ];
+
+            return (
+                <>
+                    <aside className="hidden md:flex w-64 bg-slate-900 text-white flex-col h-screen sticky top-0 shrink-0">
+                        <div className="p-6">
+                            <div className="flex items-center space-x-3 mb-10">
+                                <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
+                                    <i className="fas fa-layer-group text-lg"></i>
+                                </div>
+                                <span className="text-xl font-bold">Chronos<span className="text-indigo-400">Flow</span></span>
+                            </div>
+                            <nav className="space-y-1.5">
+                                {menuItems.map(item => (
+                                    <button
+                                        key={item.id}
+                                        onClick={() => setView(item.id)}
+                                        className={`w-full flex items-center space-x-4 px-4 py-3 rounded-xl transition-all ${
+                                            activeView === item.id ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                                        }`}
+                                    >
+                                        <i className={`fas ${item.icon} w-5 text-center`}></i>
+                                        <span className="font-semibold text-sm">{item.label}</span>
+                                    </button>
+                                ))}
+                            </nav>
+                        </div>
+                        <div className="mt-auto p-6">
+                            <div className="bg-slate-800/80 p-5 rounded-2xl border border-slate-700/50">
+                                <div className="flex justify-between items-center mb-3">
+                                    <div className="flex flex-col">
+                                        <span className="text-[10px] font-black text-indigo-400 uppercase">Rank</span>
+                                        <span className="text-lg font-black">Level {level}</span>
+                                    </div>
+                                    <div className="text-indigo-400 font-black text-xs">{xp} XP</div>
+                                </div>
+                                <div className="w-full bg-slate-900 h-2 rounded-full overflow-hidden">
+                                    <div className="h-full bg-gradient-to-r from-indigo-500 to-emerald-400 xp-bar" style={{ width: `${progressToNext}%` }}></div>
+                                </div>
+                            </div>
+                        </div>
+                    </aside>
+                    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 px-4 pb-6 pt-2">
+                        <div className="dark-glass rounded-3xl flex items-center justify-around p-2 shadow-2xl">
+                            {menuItems.map(item => (
+                                <button
+                                    key={item.id}
+                                    onClick={() => setView(item.id)}
+                                    className={`flex flex-col items-center justify-center w-14 h-14 rounded-2xl transition-all ${
+                                        activeView === item.id ? 'bg-indigo-600 text-white shadow-lg -translate-y-2' : 'text-slate-400'
+                                    }`}
+                                >
+                                    <i className={`fas ${item.icon} text-lg mb-1`}></i>
+                                    <span className="text-[9px] font-black uppercase tracking-tighter">{item.label}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </nav>
+                </>
+            );
+        };
+
+        const Dashboard = ({ tasks, logs }) => {
+            const stats = useMemo(() => {
+                const totalDuration = logs.reduce((acc, log) => acc + log.duration, 0);
+                const completed = tasks.filter(t => t.status === 'done').length;
+                return {
+                    hours: Math.floor(totalDuration / 3600),
+                    minutes: Math.floor((totalDuration % 3600) / 60),
+                    rate: tasks.length > 0 ? Math.round((completed / tasks.length) * 100) : 0,
+                    completed,
+                    total: tasks.length
+                };
+            }, [tasks, logs]);
+
+            const chartData = useMemo(() => {
+                const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+                const data = days.map(day => ({ name: day, hours: 0 }));
+                logs.forEach(log => {
+                    const d = new Date(log.startTime).getDay();
+                    data[d].hours += log.duration / 3600;
+                });
+                return data;
+            }, [logs]);
+
+            return (
+                <div className="space-y-6 animate-fade">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        {[
+                            { label: 'Flow Time', value: `${stats.hours}h ${stats.minutes}m`, icon: 'fa-clock', color: 'text-indigo-600' },
+                            { label: 'Completed', value: `${stats.completed}/${stats.total}`, icon: 'fa-check-circle', color: 'text-emerald-500' },
+                            { label: 'Efficiency', value: `${stats.rate}%`, icon: 'fa-bolt', color: 'text-amber-500' },
+                            { label: 'Sessions', value: logs.length, icon: 'fa-history', color: 'text-slate-600' },
+                        ].map((s, i) => (
+                            <div key={i} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
+                                <div className="flex items-center space-x-3 mb-2 text-slate-400">
+                                    <i className={`fas ${s.icon} text-xs`}></i>
+                                    <span className="text-[10px] font-black uppercase tracking-widest">{s.label}</span>
+                                </div>
+                                <div className={`text-2xl font-black ${s.color}`}>{s.value}</div>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 h-80">
+                        <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-6">Weekly Performance</h3>
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={chartData}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10}} />
+                                <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10}} />
+                                <Tooltip contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px rgba(0,0,0,0.1)'}} />
+                                <Bar dataKey="hours" fill="#4f46e5" radius={[4, 4, 0, 0]} />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+            );
+        };
+
+        const Scheduler = ({ tasks, planningPool, onAddTask, onCycleStatus, onDeleteTask, onToggleSubTask, onLinkPlanning }) => {
+            const [isAdding, setIsAdding] = useState(false);
+            const [title, setTitle] = useState('');
+            const [hour, setHour] = useState(9);
+            const [duration, setDuration] = useState(1);
+            const [linkingId, setLinkingId] = useState(null);
+
+            const formatTime = (h) => {
+                const p = h >= 12 ? 'PM' : 'AM';
+                const dh = h > 12 ? h - 12 : (h === 0 ? 12 : h);
+                return `${dh}:00 ${p}`;
+            };
+
+            return (
+                <div className="space-y-6 animate-fade">
+                    <div className="flex justify-between items-center px-2">
+                        <h2 className="text-xs font-black text-slate-400 uppercase tracking-widest">Active Timeline</h2>
+                        <button onClick={() => setIsAdding(!isAdding)} className="bg-slate-900 text-white px-4 py-2 rounded-xl text-xs font-black uppercase shadow-lg">
+                            <i className={`fas ${isAdding ? 'fa-times' : 'fa-plus'} mr-2`}></i> {isAdding ? 'Cancel' : 'Add Block'}
+                        </button>
+                    </div>
+
+                    {isAdding && (
+                        <div className="bg-white p-6 rounded-3xl border-2 border-indigo-100 shadow-xl space-y-4">
+                            <input type="text" placeholder="Block Title..." className="w-full bg-slate-50 rounded-xl px-5 py-3 font-bold" value={title} onChange={e => setTitle(e.target.value)} />
+                            <div className="grid grid-cols-2 gap-4">
+                                <input type="number" placeholder="Start Hour" className="w-full bg-slate-50 rounded-xl px-5 py-3 font-bold" value={hour} onChange={e => setHour(parseInt(e.target.value))} />
+                                <input type="number" step="0.5" placeholder="Duration" className="w-full bg-slate-50 rounded-xl px-5 py-3 font-bold" value={duration} onChange={e => setDuration(parseFloat(e.target.value))} />
+                            </div>
+                            <button onClick={() => { onAddTask(title, '', Priority.MEDIUM, hour, 0, duration); setIsAdding(false); setTitle(''); }} className="w-full bg-indigo-600 text-white py-3 rounded-xl font-black">DEPLOY BLOCK</button>
+                        </div>
+                    )}
+
+                    <div className="space-y-4">
+                        {tasks.map(task => (
+                            <div key={task.id} className={`bg-white rounded-3xl border border-slate-100 overflow-hidden shadow-sm flex flex-col md:flex-row ${task.xpStakes ? 'border-l-8 border-indigo-500' : 'border-l-8 border-slate-300'}`}>
+                                <div className="bg-slate-50/50 p-4 md:w-32 flex flex-row md:flex-col items-center justify-between md:justify-center border-b md:border-b-0 md:border-r border-slate-100">
+                                    <span className="text-xs font-black text-slate-400 mono">{formatTime(task.scheduledBlock.startHour)}</span>
+                                    <span className="text-[10px] font-bold text-slate-300 uppercase">{task.scheduledBlock.durationHours}H</span>
+                                </div>
+                                <div className="flex-1 p-5 flex items-center justify-between">
+                                    <div className="flex items-center space-x-4">
+                                        <button onClick={() => onCycleStatus(task.id)} className="text-2xl transition-transform active:scale-75">
+                                            <i className={`fas fa-circle-check ${task.status === 'done' ? 'text-emerald-500' : task.status === 'partial' ? 'text-amber-500' : 'text-slate-200'}`}></i>
+                                        </button>
+                                        <div>
+                                            <h3 className={`font-black text-slate-800 ${task.status === 'done' ? 'line-through opacity-40' : ''}`}>{task.title}</h3>
+                                            {task.xpStakes && <span className="text-[9px] font-black bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full uppercase">Stakes: {task.xpStakes} XP</span>}
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center space-x-3">
+                                        {task.xpStakes && !task.linkedPlanningTaskId && (
+                                            <button onClick={() => setLinkingId(task.id)} className="bg-indigo-600 text-white text-[10px] font-black px-3 py-1.5 rounded-lg shadow-md">MOUNT</button>
+                                        )}
+                                        <button onClick={() => onDeleteTask(task.id)} className="text-slate-200 hover:text-rose-500"><i className="fas fa-trash-alt"></i></button>
+                                    </div>
+                                </div>
+                                {task.subTasks && task.subTasks.length > 0 && (
+                                    <div className="p-4 bg-slate-50/30 flex flex-wrap gap-2">
+                                        {task.subTasks.map(st => (
+                                            <button key={st.id} onClick={() => onToggleSubTask(task.id, st.id)} className={`px-3 py-1.5 rounded-xl text-[10px] font-bold border transition-all ${st.completed ? 'bg-emerald-50 border-emerald-200 text-emerald-600' : 'bg-white border-slate-100 text-slate-400'}`}>
+                                                {st.title}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+
+                    {linkingId && (
+                        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                            <div className="bg-white rounded-[2.5rem] p-8 w-full max-w-md shadow-2xl">
+                                <h3 className="text-xl font-black mb-6">Link Objective</h3>
+                                <div className="space-y-3 max-h-80 overflow-y-auto custom-scrollbar">
+                                    {planningPool.filter(p => !p.completed).map(p => (
+                                        <button key={p.id} onClick={() => { onLinkPlanning(linkingId, p.id); setLinkingId(null); }} className="w-full text-left p-4 bg-slate-50 hover:bg-indigo-50 rounded-2xl border border-slate-100 font-bold transition-all">
+                                            {p.title}
+                                        </button>
+                                    ))}
+                                </div>
+                                <button onClick={() => setLinkingId(null)} className="w-full mt-4 text-slate-400 font-bold py-2">Close</button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const Tracker = ({ tasks, logs, onLogAdded }) => {
+            const [activeId, setActiveId] = useState('');
+            const [isRunning, setIsRunning] = useState(false);
+            const [seconds, setSeconds] = useState(0);
+            const timerRef = useRef(null);
+
+            useEffect(() => {
+                if (isRunning) {
+                    timerRef.current = setInterval(() => setSeconds(s => s + 1), 1000);
+                } else {
+                    clearInterval(timerRef.current);
+                }
+                return () => clearInterval(timerRef.current);
+            }, [isRunning]);
+
+            const formatTime = (s) => {
+                const h = Math.floor(s / 3600);
+                const m = Math.floor((s % 3600) / 60);
+                const rs = s % 60;
+                return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${rs.toString().padStart(2, '0')}`;
+            };
+
+            const handleStop = () => {
+                const task = tasks.find(t => t.id === activeId);
+                if (task && seconds > 0) {
+                    onLogAdded({ id: crypto.randomUUID(), taskId: task.id, taskTitle: task.title, startTime: Date.now() - (seconds * 1000), endTime: Date.now(), duration: seconds });
+                }
+                setIsRunning(false);
+                setSeconds(0);
+                setActiveId('');
+            };
+
+            return (
+                <div className="max-w-xl mx-auto space-y-8 animate-fade">
+                    <div className="bg-slate-900 rounded-[3rem] p-10 text-center shadow-2xl relative overflow-hidden">
+                        <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full -mr-32 -mt-32 blur-3xl"></div>
+                        <div className="relative z-10">
+                            <div className="text-indigo-400 text-xs font-black uppercase tracking-widest mb-4">{isRunning ? 'Focus Active' : 'Idle'}</div>
+                            <div className="text-6xl font-black text-white mb-10 mono tracking-tighter tabular-nums">{formatTime(seconds)}</div>
+                            <div className="mb-10">
+                                {isRunning ? (
+                                    <div className="bg-white/10 px-6 py-3 rounded-2xl text-white font-bold inline-block">{tasks.find(t => t.id === activeId)?.title}</div>
+                                ) : (
+                                    <select value={activeId} onChange={e => setActiveId(e.target.value)} className="w-full bg-slate-800 text-white rounded-2xl px-5 py-3 border border-slate-700 outline-none">
+                                        <option value="">Select Task...</option>
+                                        {tasks.filter(t => t.status !== 'done').map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
+                                    </select>
+                                )}
+                            </div>
+                            <div className="flex justify-center space-x-6">
+                                <button onClick={() => activeId && setIsRunning(!isRunning)} className={`w-20 h-20 rounded-full flex items-center justify-center text-2xl shadow-xl transition-all active:scale-90 ${isRunning ? 'bg-amber-500 shadow-amber-500/20' : 'bg-white shadow-white/10 text-slate-900'}`}>
+                                    <i className={`fas ${isRunning ? 'fa-pause' : 'fa-play'}`}></i>
+                                </button>
+                                {isRunning && (
+                                    <button onClick={handleStop} className="w-20 h-20 rounded-full bg-rose-500 text-white flex items-center justify-center text-2xl shadow-rose-500/20 shadow-xl transition-all active:scale-90">
+                                        <i className="fas fa-stop"></i>
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const Insights = ({ tasks, logs }) => {
+            const [insight, setInsight] = useState(null);
+            const [loading, setLoading] = useState(false);
+
+            const fetchInsights = async () => {
+                if (tasks.length === 0) return;
+                setLoading(true);
+                const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+                const prompt = `Analyze productivity: Tasks: ${JSON.stringify(tasks.map(t => ({ title: t.title, status: t.status })))}, Logs: ${JSON.stringify(logs.map(l => ({ title: l.taskTitle, duration: l.duration })))氤`;
+                try {
+                    const res = await ai.models.generateContent({
+                        model: "gemini-3-flash-preview",
+                        contents: prompt,
+                        config: {
+                            responseMimeType: "application/json",
+                            responseSchema: {
+                                type: Type.OBJECT,
+                                properties: {
+                                    score: { type: Type.NUMBER },
+                                    summary: { type: Type.STRING },
+                                    recommendations: { type: Type.ARRAY, items: { type: Type.STRING } },
+                                    focusTaskIds: { type: Type.ARRAY, items: { type: Type.STRING } }
+                                },
+                                required: ["score", "summary", "recommendations", "focusTaskIds"]
+                            }
+                        }
+                    });
+                    setInsight(JSON.parse(res.text.trim()));
+                } catch (e) { console.error(e); } finally { setLoading(false); }
+            };
+
+            useEffect(() => { fetchInsights(); }, []);
+
+            return (
+                <div className="space-y-6 animate-fade">
+                    <div className="bg-gradient-to-br from-indigo-600 to-violet-700 rounded-[2.5rem] p-10 text-white shadow-xl">
+                        <div className="flex justify-between items-start mb-10">
+                            <div>
+                                <h2 className="text-2xl font-black">AI Orchestrator</h2>
+                                <p className="text-indigo-100 opacity-80">Workflow analysis by Gemini</p>
+                            </div>
+                            <button onClick={fetchInsights} disabled={loading} className="bg-white/10 hover:bg-white/20 p-4 rounded-2xl transition-all">
+                                <i className={`fas fa-sync-alt ${loading ? 'animate-spin' : ''}`}></i>
+                            </button>
+                        </div>
+                        {loading ? (
+                            <div className="py-10 text-center text-indigo-100 font-bold">Quantum processing...</div>
+                        ) : insight ? (
+                            <div className="grid md:grid-cols-2 gap-10">
+                                <div>
+                                    <div className="text-[10px] font-black uppercase tracking-widest text-indigo-300 mb-2">Efficiency Rating</div>
+                                    <div className="text-5xl font-black mb-4">{insight.score}<span className="text-xl opacity-40">/100</span></div>
+                                    <p className="text-sm text-indigo-50 leading-relaxed italic">"{insight.summary}"</p>
+                                </div>
+                                <div className="space-y-4">
+                                    <div className="text-[10px] font-black uppercase tracking-widest text-indigo-300">Actionable Recs</div>
+                                    <ul className="space-y-3">
+                                        {insight.recommendations.map((r, i) => <li key={i} className="flex items-start space-x-3 text-xs"><i className="fas fa-lightbulb text-amber-300 mt-0.5"></i><span>{r}</span></li>)}
+                                    </ul>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="text-center opacity-50">Generate insights to see analysis.</div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        const Planning = ({ planningTasks, setPlanningTasks }) => {
+            const [title, setTitle] = useState('');
+            const add = () => { if(!title) return; setPlanningTasks(prev => [...prev, { id: crypto.randomUUID(), title, category: 'weekly', completed: false, subTasks: [] }]); setTitle(''); };
+            return (
+                <div className="max-w-2xl mx-auto space-y-8 animate-fade">
+                    <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
+                        <h2 className="text-lg font-black uppercase tracking-widest mb-6">Mission Control</h2>
+                        <div className="flex space-x-3 mb-8">
+                            <input className="flex-1 bg-slate-50 rounded-2xl px-5 py-3 font-bold outline-none" placeholder="Major Objective..." value={title} onChange={e => setTitle(e.target.value)} />
+                            <button onClick={add} className="bg-slate-900 text-white px-8 rounded-2xl font-black text-xs uppercase shadow-lg">Deploy</button>
+                        </div>
+                        <div className="space-y-4">
+                            {planningTasks.filter(p => !p.completed).map(p => (
+                                <div key={p.id} className="p-5 bg-slate-50 rounded-3xl flex items-center justify-between group transition-all hover:bg-white hover:shadow-md">
+                                    <div className="flex items-center space-x-4">
+                                        <button onClick={() => setPlanningTasks(prev => prev.map(pt => pt.id === p.id ? {...pt, completed: true} : pt))} className="w-6 h-6 rounded-lg border-2 border-slate-200 hover:border-emerald-500"></button>
+                                        <span className="font-bold text-slate-800">{p.title}</span>
+                                    </div>
+                                    <button onClick={() => setPlanningTasks(prev => prev.filter(pt => pt.id !== p.id))} className="text-slate-200 hover:text-rose-500"><i className="fas fa-trash-alt"></i></button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- Main App ---
+
+        const App = () => {
+            const [activeView, setActiveView] = useState('schedule');
+            const [tasks, setTasks] = useState(() => JSON.parse(localStorage.getItem('chronos_tasks_v5')) || []);
+            const [logs, setLogs] = useState(() => JSON.parse(localStorage.getItem('chronos_logs_v5')) || []);
+            const [planning, setPlanning] = useState(() => JSON.parse(localStorage.getItem('chronos_planning_v5')) || []);
+
+            useEffect(() => {
+                localStorage.setItem('chronos_tasks_v5', JSON.stringify(tasks));
+                localStorage.setItem('chronos_logs_v5', JSON.stringify(logs));
+                localStorage.setItem('chronos_planning_v5', JSON.stringify(planning));
+            }, [tasks, logs, planning]);
+
+            const xp = useMemo(() => {
+                return tasks.reduce((acc, t) => {
+                    if (t.status === 'done') return acc + (t.xpStakes || 50);
+                    if (t.status === 'partial') return acc + 20;
+                    if (t.xpStakes && t.status === 'todo') return acc - (t.xpStakes / 2);
+                    return acc;
+                }, 0);
+            }, [tasks]);
+
+            const onAddTask = (title, desc, priority, h, m, d) => {
+                setTasks(prev => [...prev, { id: crypto.randomUUID(), title, description: desc, priority, status: 'todo', createdAt: Date.now(), scheduledBlock: { startHour: h, startMinute: m, durationHours: d }, xpStakes: priority === 'HIGH' ? 100 : 0 }].sort((a,b) => a.scheduledBlock.startHour - b.scheduledBlock.startHour));
+            };
+
+            const cycleStatus = (id) => {
+                setTasks(prev => prev.map(t => {
+                    if (t.id === id) {
+                        const next = t.status === 'todo' ? 'partial' : t.status === 'partial' ? 'done' : 'todo';
+                        return { ...t, status: next, subTasks: next === 'done' ? t.subTasks?.map(s => ({...s, completed: true})) : t.subTasks };
+                    }
+                    return t;
+                }));
+            };
+
+            return (
+                <div className="flex flex-col md:flex-row min-h-screen">
+                    <Sidebar activeView={activeView} setView={setActiveView} xp={xp} />
+                    <main className="flex-1 overflow-y-auto max-h-screen custom-scrollbar pb-32 md:pb-8">
+                        <div className="container mx-auto px-4 py-8 max-w-5xl">
+                            <header className="mb-10 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                                <div>
+                                    <h1 className="text-3xl font-black text-slate-900 tracking-tight capitalize">{activeView === 'schedule' ? 'Block Protocol' : activeView}</h1>
+                                    <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-1">Velocity Engine v5.0</p>
+                                </div>
+                                <div className="bg-slate-900 text-white px-6 py-2.5 rounded-2xl shadow-xl flex items-center space-x-3 w-full sm:w-auto justify-center">
+                                    <i className="fas fa-bolt text-amber-400"></i>
+                                    <span className="font-black text-sm">{xp} XP</span>
+                                </div>
+                            </header>
+
+                            {activeView === 'dashboard' && <Dashboard tasks={tasks} logs={logs} />}
+                            {activeView === 'schedule' && <Scheduler tasks={tasks} planningPool={planning} onAddTask={onAddTask} onCycleStatus={cycleStatus} onDeleteTask={id => setTasks(tasks.filter(t => t.id !== id))} onToggleSubTask={(tid, sid) => setTasks(tasks.map(t => t.id === tid ? {...t, subTasks: t.subTasks.map(s => s.id === sid ? {...s, completed: !s.completed} : s)} : t))} onLinkPlanning={(tid, pid) => setTasks(tasks.map(t => t.id === tid ? {...t, linkedPlanningTaskId: pid, title: planning.find(p => p.id === pid).title} : t))} />}
+                            {activeView === 'tracker' && <Tracker tasks={tasks} logs={logs} onLogAdded={l => setLogs([l, ...logs])} />}
+                            {activeView === 'insights' && <Insights tasks={tasks} logs={logs} />}
+                            {activeView === 'planning' && <Planning planningTasks={planning} setPlanningTasks={setPlanning} />}
+                        </div>
+                    </main>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(React.createElement(App));
+    </script>
+</body>
+</html>
