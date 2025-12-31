@@ -133,25 +133,44 @@ const Sidebar = ({ activeView, setView, xp }: { activeView: View, setView: (v: V
 const App = () => {
   const [activeView, setActiveView] = useState<View>('schedule');
   const [tasks, setTasks] = useState<Task[]>(() => {
-    const saved = localStorage.getItem('chronos_v12_tasks');
+    const saved = localStorage.getItem('chronos_v13_tasks');
     if (saved) return JSON.parse(saved);
     const ex = getDailyExercises();
     return [
-      { id: 't1', title: 'Morning Routine', priority: Priority.HIGH, status: 'todo', createdAt: Date.now(), scheduledBlock: { startHour: 5, startMinute: 30, durationHours: 2 }, subTasks: [{id:'s1', title:'Hanging', completed:false, xpValue:10},{id:'s2', title:'Breathing', completed:false, xpValue:10},{id:'s3', title:'Stretching', completed:false, xpValue:10},{id:'s4', title:'Make Bed', completed:false, xpValue:10}] },
+      { id: 't1', title: 'Morning Routine', priority: Priority.HIGH, status: 'todo', createdAt: Date.now(), scheduledBlock: { startHour: 5, startMinute: 30, durationHours: 2 }, subTasks: [
+        {id:'mr1', title:'Hanging', completed:false, xpValue:10},
+        {id:'mr2', title:'Stretching', completed:false, xpValue:10},
+        {id:'mr3', title:'Breathing', completed:false, xpValue:10},
+        {id:'mr4', title:'Make Bed', completed:false, xpValue:10},
+        {id:'mr5', title:'BMCJJ', completed:false, xpValue:10}
+      ]},
       { id: 't2', title: '1 Thing (Deepwork)', priority: Priority.HIGH, status: 'todo', createdAt: Date.now(), scheduledBlock: { startHour: 7, startMinute: 30, durationHours: 2 }, xpStakes: 100 },
-      { id: 't3', title: 'Training', priority: Priority.MEDIUM, status: 'todo', createdAt: Date.now(), scheduledBlock: { startHour: 9, startMinute: 30, durationHours: 2 }, subTasks: [{id:'s5', title:ex[0], completed:false, xpValue:20},{id:'s6', title:ex[1], completed:false, xpValue:20}] },
+      { id: 't3', title: 'Training', priority: Priority.MEDIUM, status: 'todo', createdAt: Date.now(), scheduledBlock: { startHour: 9, startMinute: 30, durationHours: 2 }, subTasks: [
+        {id:'tr1', title:'Steps', completed:false, xpValue:10},
+        {id:'tr2', title:'Core', completed:false, xpValue:10},
+        {id:'tr3', title:'Cardio', completed:false, xpValue:10},
+        {id:'tr4', title:ex[0], completed:false, xpValue:10},
+        {id:'tr5', title:ex[1], completed:false, xpValue:10}
+      ]},
       { id: 't4', title: 'B Side (Deepwork)', priority: Priority.HIGH, status: 'todo', createdAt: Date.now(), scheduledBlock: { startHour: 11, startMinute: 30, durationHours: 2 }, xpStakes: 75 },
-      { id: 't5', title: 'Night Routine', priority: Priority.MEDIUM, status: 'todo', createdAt: Date.now(), scheduledBlock: { startHour: 22, startMinute: 0, durationHours: 1 }, subTasks: [{id:'n1', title:'Review Day', completed:false, xpValue:20},{id:'n2', title:'Plan Tomorrow', completed:false, xpValue:20}] }
+      { id: 't5', title: 'Free Time', priority: Priority.LOW, status: 'todo', createdAt: Date.now(), scheduledBlock: { startHour: 13, startMinute: 30, durationHours: 4.5 } },
+      { id: 't6', title: 'Education', priority: Priority.MEDIUM, status: 'todo', createdAt: Date.now(), scheduledBlock: { startHour: 18, startMinute: 30, durationHours: 1 }, xpStakes: 50 },
+      { id: 't7', title: 'Yoga and Mobility', priority: Priority.LOW, status: 'todo', createdAt: Date.now(), scheduledBlock: { startHour: 20, startMinute: 0, durationHours: 0.5 }, xpStakes: 50 },
+      { id: 't8', title: 'Night Routine', priority: Priority.MEDIUM, status: 'todo', createdAt: Date.now(), scheduledBlock: { startHour: 22, startMinute: 0, durationHours: 0.5 }, subTasks: [
+        {id:'nr1', title:'Review Day', completed:false, xpValue:20},
+        {id:'nr2', title:'Plan Tomorrow', completed:false, xpValue:20},
+        {id:'nr3', title:'Bed time', completed:false, xpValue:20}
+      ]}
     ];
   });
   const [planning, setPlanning] = useState<PlanningTask[]>(() => {
-    const saved = localStorage.getItem('chronos_v12_plan');
+    const saved = localStorage.getItem('chronos_v13_plan');
     return saved ? JSON.parse(saved) : [
       { id: 'p1', title: 'Launch Q1 MVP', category: 'monthly', completed: false, subTasks: [] },
       { id: 'p2', title: 'AI Module Integration', category: 'weekly', completed: false, subTasks: [] }
     ];
   });
-  const [logs, setLogs] = useState<TimeLog[]>(() => JSON.parse(localStorage.getItem('chronos_v12_logs') || '[]'));
+  const [logs, setLogs] = useState<TimeLog[]>(() => JSON.parse(localStorage.getItem('chronos_v13_logs') || '[]'));
 
   // Timer State
   const [timerTaskId, setTimerTaskId] = useState<string>('');
@@ -164,31 +183,41 @@ const App = () => {
   const [linkingTaskId, setLinkingTaskId] = useState<string | null>(null);
 
   useEffect(() => {
-    localStorage.setItem('chronos_v12_tasks', JSON.stringify(tasks));
-    localStorage.setItem('chronos_v12_plan', JSON.stringify(planning));
-    localStorage.setItem('chronos_v12_logs', JSON.stringify(logs));
+    localStorage.setItem('chronos_v13_tasks', JSON.stringify(tasks));
+    localStorage.setItem('chronos_v13_plan', JSON.stringify(planning));
+    localStorage.setItem('chronos_v13_logs', JSON.stringify(logs));
   }, [tasks, planning, logs]);
 
   const totalXP = useMemo(() => {
     return tasks.reduce((acc, t) => {
       let taskXP = 0;
+      
+      // Stakes Logic (1 Thing, B Side, Education, Yoga)
       if (t.xpStakes) {
         if (t.status === 'done') taskXP = t.xpStakes;
         else if (t.status === 'todo') taskXP = -t.xpStakes;
         return acc + taskXP;
       }
+
+      // Sub-task System (Morning, Training, Night)
       if (t.subTasks) {
         const completedCount = t.subTasks.filter(st => st.completed).length;
+        const allDone = completedCount === t.subTasks.length;
+        const noneDone = completedCount === 0;
+
         if (t.title === 'Night Routine') {
           taskXP = completedCount * 20;
-          if (completedCount === t.subTasks.length) taskXP += 40;
-          if (completedCount === 0) taskXP -= 50;
+          if (allDone) taskXP += 40; // Total 100 bonus
+          if (noneDone) taskXP -= 50;
+        } else if (t.title === 'Morning Routine' || t.title === 'Training') {
+          taskXP = completedCount * 10;
+          if (allDone) taskXP += 25; // 5*10 + 25 = 75
+          if (noneDone) taskXP -= 25;
         } else {
           taskXP = completedCount * 10;
-          if (completedCount === t.subTasks.length) taskXP += 25;
-          if (completedCount === 0) taskXP -= 25;
         }
       } else {
+        // Basic blocks
         if (t.status === 'done') taskXP += 50;
         if (t.status === 'partial') taskXP += 20;
       }
@@ -311,7 +340,7 @@ const App = () => {
         <header className="mb-12 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
           <div>
             <h1 className="text-4xl font-black text-slate-900 tracking-tight capitalize">{activeView} Protocol</h1>
-            <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em] mt-2">Chronos Efficiency Engine v12.4</p>
+            <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em] mt-2">Chronos Efficiency Engine v13.0</p>
           </div>
           <div className="bg-slate-900 text-white px-8 py-3 rounded-2xl shadow-2xl flex items-center space-x-4 border border-white/5">
             <i className="fas fa-bolt text-amber-400 text-xl"></i>
@@ -325,7 +354,7 @@ const App = () => {
               <div key={task.id} className={`bg-white rounded-[2.5rem] border border-slate-100 overflow-hidden shadow-sm flex flex-col border-l-[10px] transition-all hover:shadow-md ${task.xpStakes ? 'border-l-indigo-600' : 'border-l-slate-200'}`}>
                 <div className="flex flex-col sm:flex-row items-stretch">
                   <div className="w-full sm:w-36 bg-slate-50/50 p-6 flex flex-row sm:flex-col items-center justify-between sm:justify-center sm:border-r border-slate-100">
-                    <span className="text-xs font-black text-slate-900 tabular-nums tracking-widest">{formatHour(task.scheduledBlock.startHour, 0)}</span>
+                    <span className="text-xs font-black text-slate-900 tabular-nums tracking-widest">{formatHour(task.scheduledBlock.startHour, task.scheduledBlock.startMinute)}</span>
                     <span className="text-[10px] font-bold text-slate-400 uppercase mt-1">{task.scheduledBlock.durationHours}H Block</span>
                   </div>
                   <div className="flex-1 p-8 flex items-center justify-between">
@@ -338,6 +367,7 @@ const App = () => {
                         <div className="flex items-center space-x-3 mt-2">
                            {task.xpStakes && <span className="bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">+/- {task.xpStakes} XP Stake</span>}
                            {task.linkedPlanningTaskId && <span className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest"><i className="fas fa-link mr-1"></i> Mounted</span>}
+                           {task.priority === Priority.HIGH && <span className="text-[10px] text-rose-500 font-black uppercase tracking-widest"><i className="fas fa-fire mr-1"></i> Urgent</span>}
                         </div>
                       </div>
                     </div>
@@ -506,11 +536,6 @@ const App = () => {
                  )}
                </div>
             </div>
-            {!aiResult && !aiLoading && (
-               <div className="text-center py-20 text-slate-300 border-2 border-dashed border-slate-200 rounded-[3rem]">
-                 <p className="font-black uppercase tracking-widest text-sm">Deployment Ready. Sync your protocol history for analysis.</p>
-               </div>
-            )}
           </div>
         )}
 
@@ -533,11 +558,6 @@ const App = () => {
                       <i className="fas fa-plus-circle text-2xl text-indigo-200 group-hover:text-indigo-600 transition-all"></i>
                     </button>
                   ))}
-                  {planning.filter(p => !p.completed).length === 0 && (
-                    <div className="text-center py-10">
-                        <p className="text-slate-400 font-black uppercase text-sm">No active objectives found.</p>
-                    </div>
-                  )}
                </div>
                <button onClick={() => setLinkingTaskId(null)} className="w-full text-slate-400 font-black py-4 uppercase tracking-widest text-xs">Abort Operation</button>
             </div>
